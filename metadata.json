@@ -1,0 +1,5 @@
+{
+  "name": "RiskGuard AI",
+  "description": "An AI-powered scenario planning tool using Bow-Tie analysis and Monte Carlo simulations.",
+  "requestFramePermissions": []
+}
