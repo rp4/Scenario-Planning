@@ -1,10 +1,11 @@
+
 import React, { useState, useCallback, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import BowTieGraph from './components/BowTieGraph';
 import ChatInterface from './components/ChatInterface';
 import { INITIAL_REACTFLOW_NODES, INITIAL_REACTFLOW_EDGES, X_POS } from './constants';
-import { ChatMessage, ContentType, MessageRole, SimulationResult, NodeType } from './types';
-import { generateRiskResponse } from './services/geminiService';
+import { ChatMessage, ContentType, MessageRole, SimulationResult, NodeType, Attachment } from './types';
+import { generateRiskResponse, transcribeAudio } from './services/geminiService';
 import { 
   Node, 
   Edge, 
@@ -193,11 +194,30 @@ const App: React.FC = () => {
     ]);
   };
 
-  const handleSendMessage = async (text: string) => {
-    addMessage(MessageRole.USER, text);
+  const handleTranscribeAudio = async (blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64data = (reader.result as string).split(',')[1];
+        try {
+          const text = await transcribeAudio(base64data, blob.type);
+          resolve(text);
+        } catch (e) {
+          reject(e);
+        }
+      };
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  const handleSendMessage = async (text: string, attachments: Attachment[] = []) => {
+    // Prepare message for display
+    const displayAttachments = attachments.map(a => ({ name: a.name, mimeType: a.mimeType }));
+    addMessage(MessageRole.USER, text, ContentType.TEXT, { attachments: displayAttachments });
+    
     setIsTyping(true);
 
-    // Simulation Logic
+    // Simulation Logic check
     if (text.includes("Monte Carlo") || text.includes("simulation")) {
       setTimeout(() => {
         const simData = runGraphSimulation(nodes, edges);
@@ -215,10 +235,12 @@ const App: React.FC = () => {
       return;
     }
 
-    // API Call
+    // Helper to convert ChatMessages to history format expected by Gemini service
+    // We need to handle past attachments in history if we want the model to remember them (simplified here to text-only history for older messages, but current message gets full treatment)
+    // Note: Proper multimodal history management is complex. Here we will send text history and attach files ONLY to current turn if provided.
     const history = messages.map(m => ({
       role: m.role,
-      parts: [{ text: m.content }]
+      parts: [{ text: m.content }] // We are simplifying history to text for now to avoid payload bloat, unless essential.
     }));
     
     // Serialize full graph state 
@@ -227,7 +249,7 @@ const App: React.FC = () => {
       edges: edges.map(e => ({ source: e.source, target: e.target, label: e.label, weight: e.data?.weight }))
     });
 
-    const response = await generateRiskResponse(history, text, graphContext);
+    const response = await generateRiskResponse(history, text, attachments, graphContext);
     
     // Execute Tools if present
     if (response.toolCalls && response.toolCalls.length > 0) {
@@ -384,10 +406,12 @@ const App: React.FC = () => {
         <div className="h-16 flex items-center px-8 justify-between">
            <div className="flex items-center gap-3">
              <div className="w-9 h-9 bg-slate-900 rounded-lg flex items-center justify-center shadow-lg shadow-slate-400/20">
-               <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+               <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 12L3 6v12l9-6zm0 0l9-6v12l-9-6z"></path>
+               </svg>
              </div>
              <div>
-                <h1 className="text-xl font-bold text-slate-800 tracking-tight leading-none">Scenario Planning</h1>
+                <h1 className="text-xl font-bold text-slate-800 tracking-tight leading-none">Risky Bowtie</h1>
                 <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">by Auditor in the Loop</span>
              </div>
            </div>
@@ -447,8 +471,9 @@ const App: React.FC = () => {
           messages={messages} 
           isTyping={isTyping} 
           onSendMessage={handleSendMessage}
-          onSuggestionClick={handleSendMessage}
+          onSuggestionClick={(txt) => handleSendMessage(txt, [])}
           onClearChat={handleClearChat}
+          onTranscribeAudio={handleTranscribeAudio}
         />
       </section>
 

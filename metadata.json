@@ -1,5 +1,7 @@
 {
-  "name": "RiskGuard AI",
+  "name": "Risky BowTie",
   "description": "An AI-powered scenario planning tool using Bow-Tie analysis and Monte Carlo simulations.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [
+    "microphone"
+  ]
 }

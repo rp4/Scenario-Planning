@@ -1,5 +1,7 @@
+
 import { GoogleGenAI, GenerateContentResponse, FunctionDeclaration, Type } from "@google/genai";
 import { SYSTEM_INSTRUCTION } from '../constants';
+import { Attachment } from '../types';
 
 const apiKey = process.env.API_KEY || ''; 
 
@@ -71,9 +73,30 @@ export interface GeminiResponse {
   }[];
 }
 
+export const transcribeAudio = async (base64Audio: string, mimeType: string = 'audio/webm'): Promise<string> => {
+  if (!ai) return "Error: API Key missing.";
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: {
+        parts: [
+          { inlineData: { mimeType, data: base64Audio } },
+          { text: "Transcribe this audio exactly. Do not add any commentary, just the text." }
+        ]
+      }
+    });
+    return response.text || "";
+  } catch (error) {
+    console.error("Transcription Error:", error);
+    return "";
+  }
+};
+
 export const generateRiskResponse = async (
-  history: { role: string; parts: { text: string }[] }[],
+  history: { role: string; parts: { text?: string; inlineData?: any }[] }[],
   currentMessage: string,
+  attachments: Attachment[],
   contextData: string // The current graph state as JSON string
 ): Promise<GeminiResponse> => {
   if (!ai) {
@@ -91,10 +114,26 @@ export const generateRiskResponse = async (
     User Query: ${currentMessage}
     `;
 
+    // Build the current turn content
+    const currentParts: any[] = [];
+    
+    // Add Attachments
+    attachments.forEach(att => {
+      currentParts.push({
+        inlineData: {
+          mimeType: att.mimeType,
+          data: att.data
+        }
+      });
+    });
+
+    // Add Text
+    currentParts.push({ text: newMessageWithContext });
+
     // Combine history with the new message
     const contents = [
       ...history,
-      { role: 'user', parts: [{ text: newMessageWithContext }] }
+      { role: 'user', parts: currentParts }
     ];
 
     const response: GenerateContentResponse = await ai.models.generateContent({

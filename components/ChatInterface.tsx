@@ -1,32 +1,126 @@
-import React, { useRef, useEffect } from 'react';
-import { Send, Sparkles, Terminal, Play, RotateCcw } from 'lucide-react';
-import { ChatMessage, MessageRole, ContentType } from '../types';
+
+import React, { useRef, useEffect, useState } from 'react';
+import { Send, Sparkles, Terminal, Play, RotateCcw, Paperclip, Mic, X, FileText, Loader2, StopCircle } from 'lucide-react';
+import { ChatMessage, MessageRole, ContentType, Attachment } from '../types';
 import { SUGGESTION_CHIPS } from '../constants';
 import SimulationChart from './SimulationChart';
 
 interface ChatInterfaceProps {
   messages: ChatMessage[];
   isTyping: boolean;
-  onSendMessage: (text: string) => void;
+  onSendMessage: (text: string, attachments: Attachment[]) => void;
   onSuggestionClick: (text: string) => void;
   onClearChat: () => void;
+  onTranscribeAudio: (blob: Blob) => Promise<string>;
 }
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, isTyping, onSendMessage, onSuggestionClick, onClearChat }) => {
-  const [input, setInput] = React.useState('');
+const ChatInterface: React.FC<ChatInterfaceProps> = ({ 
+  messages, isTyping, onSendMessage, onSuggestionClick, onClearChat, onTranscribeAudio 
+}) => {
+  const [input, setInput] = useState('');
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
     }
-  }, [messages, isTyping]);
+  }, [messages, isTyping, attachments.length]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (input.trim()) {
-      onSendMessage(input);
+    if (input.trim() || attachments.length > 0) {
+      onSendMessage(input, attachments);
       setInput('');
+      setAttachments([]);
+    }
+  };
+
+  // --- File Upload Logic ---
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64String = event.target?.result as string;
+        // Extract base64 data part
+        const base64Data = base64String.split(',')[1];
+        
+        const newAttachment: Attachment = {
+          name: file.name,
+          mimeType: file.type,
+          data: base64Data
+        };
+        setAttachments(prev => [...prev, newAttachment]);
+      };
+      reader.readAsDataURL(file);
+    }
+    // Reset input
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const removeAttachment = (index: number) => {
+    setAttachments(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // --- Recording Logic ---
+  const toggleRecording = async () => {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        setIsTranscribing(true);
+        try {
+          const text = await onTranscribeAudio(audioBlob);
+          if (text) {
+            setInput(prev => (prev ? `${prev} ${text}` : text));
+          }
+        } catch (error) {
+          console.error("Transcription failed", error);
+        } finally {
+          setIsTranscribing(false);
+        }
+        
+        // Stop all tracks
+        stream.getTracks().forEach(track => track.stop());
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      console.error("Error accessing microphone:", err);
+      alert("Could not access microphone. Please check permissions.");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
     }
   };
 
@@ -34,7 +128,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, isTyping, onSen
     <div className="flex flex-col h-full bg-white border-t border-slate-200 shadow-2xl shadow-slate-400/10">
       
       {/* Header */}
-      <div className="h-10 border-b border-slate-100 flex items-center px-4 bg-slate-50 justify-between">
+      <div className="h-10 border-b border-slate-100 flex items-center px-4 bg-slate-50 justify-between shrink-0">
         <div className="flex items-center">
           <Sparkles className="w-4 h-4 text-blue-500 mr-2" />
           <span className="text-xs font-semibold text-slate-600">Risk Agent</span>
@@ -59,11 +153,24 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, isTyping, onSen
             className={`flex ${msg.role === MessageRole.USER ? 'justify-end' : 'justify-start'}`}
           >
             <div className={`
-              max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm
+              max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm flex flex-col gap-2
               ${msg.role === MessageRole.USER 
                 ? 'bg-slate-800 text-white rounded-br-none' 
                 : 'bg-slate-100 text-slate-800 rounded-bl-none border border-slate-200'}
             `}>
+              
+              {/* Attachments Display */}
+              {msg.attachments && msg.attachments.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-1">
+                  {msg.attachments.map((att, idx) => (
+                    <div key={idx} className="flex items-center gap-1 bg-white/20 rounded px-2 py-1 text-[10px] border border-white/10">
+                      <FileText className="w-3 h-3" />
+                      <span className="truncate max-w-[150px]">{att.name}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* Content Type Handling */}
               {msg.type === ContentType.TEXT && (
                 <p className="whitespace-pre-wrap">{msg.content}</p>
@@ -89,21 +196,27 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, isTyping, onSen
           </div>
         ))}
         
-        {isTyping && (
+        {(isTyping || isTranscribing) && (
           <div className="flex justify-start">
-            <div className="bg-slate-100 rounded-2xl rounded-bl-none px-4 py-3 border border-slate-200">
-              <div className="flex gap-1">
-                <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '0ms'}}></div>
-                <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '150ms'}}></div>
-                <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '300ms'}}></div>
-              </div>
+            <div className="bg-slate-100 rounded-2xl rounded-bl-none px-4 py-3 border border-slate-200 flex items-center gap-2">
+              {isTranscribing ? (
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                   <Loader2 className="w-3 h-3 animate-spin" /> Transcribing audio...
+                </div>
+              ) : (
+                <div className="flex gap-1">
+                  <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '0ms'}}></div>
+                  <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '150ms'}}></div>
+                  <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '300ms'}}></div>
+                </div>
+              )}
             </div>
           </div>
         )}
       </div>
 
       {/* Input Area */}
-      <div className="p-4 bg-white">
+      <div className="p-4 bg-white shrink-0">
         {/* Chips */}
         <div className="flex gap-2 mb-3 overflow-x-auto pb-1 scrollbar-hide">
           {SUGGESTION_CHIPS.map((chip) => (
@@ -118,21 +231,71 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, isTyping, onSen
           ))}
         </div>
 
-        <form onSubmit={handleSubmit} className="relative">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask the Risk Agent to analyze risks..."
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-4 pr-12 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all"
-          />
-          <button 
-            type="submit"
-            disabled={!input.trim() || isTyping}
-            className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 transition-colors"
-          >
-            <Send className="w-4 h-4" />
-          </button>
+        {/* Attachments Preview */}
+        {attachments.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-2">
+            {attachments.map((att, idx) => (
+              <div key={idx} className="flex items-center gap-2 bg-slate-100 border border-slate-200 rounded-lg pl-2 pr-1 py-1 text-xs">
+                <FileText className="w-3 h-3 text-slate-500" />
+                <span className="text-slate-700 font-medium max-w-[200px] truncate">{att.name}</span>
+                <button 
+                  onClick={() => removeAttachment(idx)}
+                  className="p-1 hover:bg-slate-200 rounded text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit}>
+           <input 
+             type="file" 
+             ref={fileInputRef} 
+             onChange={handleFileSelect}
+             className="hidden"
+             accept=".pdf,.txt,.csv,.md"
+           />
+
+          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl p-1 pl-3 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder={isRecording ? "Listening..." : "Ask the Risk Agent..."}
+              className={`flex-1 bg-transparent border-none focus:ring-0 text-sm py-2 ${isRecording ? 'placeholder:text-red-500' : 'placeholder:text-slate-400'}`}
+              disabled={isRecording}
+            />
+            
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
+                title="Attach File"
+              >
+                <Paperclip className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={toggleRecording}
+                className={`p-2 rounded-lg transition-colors ${isRecording ? 'bg-red-100 text-red-600 animate-pulse' : 'text-slate-400 hover:text-red-600 hover:bg-red-50'}`}
+                title={isRecording ? "Stop Recording" : "Voice Input"}
+              >
+                {isRecording ? <StopCircle className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+              </button>
+
+              <button 
+                type="submit"
+                disabled={(!input.trim() && attachments.length === 0) || isTyping || isRecording}
+                className={`p-2 rounded-lg transition-colors ${(!input.trim() && attachments.length === 0) ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm'}`}
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
         </form>
       </div>
     </div>
@@ -140,3 +303,4 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ messages, isTyping, onSen
 };
 
 export default ChatInterface;
+    

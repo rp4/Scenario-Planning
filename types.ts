@@ -1,3 +1,4 @@
+
 export enum NodeType {
   CAUSE = 'CAUSE',
   PREVENTION = 'PREVENTION',
@@ -32,6 +33,12 @@ export enum ContentType {
   CODE = 'code'
 }
 
+export interface Attachment {
+  name: string;
+  mimeType: string;
+  data: string; // Base64
+}
+
 export interface ChatMessage {
   id: string;
   role: MessageRole;
@@ -40,6 +47,7 @@ export interface ChatMessage {
   chartData?: any[]; // For Recharts
   codeSnippet?: string; // For Python code display
   timestamp: number;
+  attachments?: { name: string; mimeType: string }[]; // Metadata for display
 }
 
 export interface SimulationResult {
