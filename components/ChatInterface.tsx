@@ -125,7 +125,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full bg-white border-t border-slate-200 shadow-2xl shadow-slate-400/10">
+    <div className="flex flex-col h-full bg-white">
       
       {/* Header */}
       <div className="h-10 border-b border-slate-100 flex items-center px-4 bg-slate-50 justify-between shrink-0">
@@ -153,7 +153,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             className={`flex ${msg.role === MessageRole.USER ? 'justify-end' : 'justify-start'}`}
           >
             <div className={`
-              max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm flex flex-col gap-2
+              max-w-[90%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm flex flex-col gap-2
               ${msg.role === MessageRole.USER 
                 ? 'bg-slate-800 text-white rounded-br-none' 
                 : 'bg-slate-100 text-slate-800 rounded-bl-none border border-slate-200'}
@@ -177,7 +177,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               )}
 
               {msg.type === ContentType.CHART && msg.chartData && (
-                <div className="w-[450px]">
+                <div className="w-full min-w-[250px]">
                   <p className="mb-2">{msg.content}</p>
                   <SimulationChart data={msg.chartData} />
                   {msg.codeSnippet && (
@@ -303,4 +303,3 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 };
 
 export default ChatInterface;
-    

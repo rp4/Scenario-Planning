@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import BowTieGraph from './components/BowTieGraph';
 import ChatInterface from './components/ChatInterface';
@@ -98,8 +98,39 @@ const App: React.FC = () => {
   ]);
   const [isTyping, setIsTyping] = useState(false);
 
+  // Sidebar Resizing State
+  const [sidebarWidth, setSidebarWidth] = useState(420);
+  const [isResizing, setIsResizing] = useState(false);
+
   // File Input Ref for Import
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // --- Resizing Handlers ---
+  const startResizing = useCallback(() => setIsResizing(true), []);
+  const stopResizing = useCallback(() => setIsResizing(false), []);
+
+  const resize = useCallback(
+    (mouseMoveEvent: MouseEvent) => {
+      if (isResizing) {
+        const newWidth = window.innerWidth - mouseMoveEvent.clientX;
+        if (newWidth > 300 && newWidth < 800) {
+          setSidebarWidth(newWidth);
+        }
+      }
+    },
+    [isResizing]
+  );
+
+  useEffect(() => {
+    if (isResizing) {
+      window.addEventListener("mousemove", resize);
+      window.addEventListener("mouseup", stopResizing);
+    }
+    return () => {
+      window.removeEventListener("mousemove", resize);
+      window.removeEventListener("mouseup", stopResizing);
+    };
+  }, [isResizing, resize, stopResizing]);
 
   // --- Graph Manipulation Handlers ---
 
@@ -405,11 +436,11 @@ const App: React.FC = () => {
       <header className="h-auto bg-white border-b border-slate-200 flex flex-col shrink-0 z-30 shadow-sm">
         <div className="h-16 flex items-center px-8 justify-between">
            <div className="flex items-center gap-3">
-             <div className="w-9 h-9 bg-slate-900 rounded-lg flex items-center justify-center shadow-lg shadow-slate-400/20">
-               <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 12L3 6v12l9-6zm0 0l9-6v12l-9-6z"></path>
-               </svg>
-             </div>
+             <img 
+               src="https://storage.googleapis.com/toolbox-478717-storage/branding/worker.png" 
+               alt="Risky BowTie Logo"
+               className="w-10 h-10 object-contain"
+             />
              <div>
                 <h1 className="text-xl font-bold text-slate-800 tracking-tight leading-none">Risky Bowtie</h1>
                 <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">by Auditor in the Loop</span>
@@ -449,33 +480,47 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      {/* MAIN CONTENT: Graph */}
-      <main className="flex-1 relative overflow-hidden bg-slate-100">
-        <BowTieGraph 
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={handleConnect}
-          onAddNode={(type, title, value) => handleAddNode(type, title, value)} 
-          onUpdateNode={handleUpdateNode}
-          onDeleteNode={handleDeleteNode}
-          onUpdateEdge={handleUpdateEdge}
-          onDeleteEdge={handleDeleteEdge}
-        />
-      </main>
+      {/* CONTENT WRAPPER */}
+      <div className="flex-1 flex flex-row overflow-hidden">
+          {/* MAIN CONTENT: Graph */}
+          <main className="flex-1 relative bg-slate-100 min-w-0">
+            <BowTieGraph 
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onConnect={handleConnect}
+              onAddNode={(type, title, value) => handleAddNode(type, title, value)} 
+              onUpdateNode={handleUpdateNode}
+              onDeleteNode={handleDeleteNode}
+              onUpdateEdge={handleUpdateEdge}
+              onDeleteEdge={handleDeleteEdge}
+            />
+          </main>
 
-      {/* BOTTOM: Chat */}
-      <section className="h-[40vh] shrink-0 z-40 relative border-t border-slate-200 shadow-[0_-4px_20px_-5px_rgba(0,0,0,0.05)]">
-        <ChatInterface 
-          messages={messages} 
-          isTyping={isTyping} 
-          onSendMessage={handleSendMessage}
-          onSuggestionClick={(txt) => handleSendMessage(txt, [])}
-          onClearChat={handleClearChat}
-          onTranscribeAudio={handleTranscribeAudio}
-        />
-      </section>
+          {/* DRAG HANDLE */}
+          <div
+            className={`w-1 hover:w-1.5 cursor-col-resize bg-slate-200 hover:bg-blue-400 z-50 transition-colors flex flex-col justify-center items-center group select-none ${isResizing ? 'bg-blue-500 w-1.5' : ''}`}
+            onMouseDown={startResizing}
+          >
+             <div className="h-8 w-0.5 bg-slate-400 group-hover:bg-white rounded" />
+          </div>
+
+          {/* SIDEBAR: Chat */}
+          <aside 
+            style={{ width: sidebarWidth }}
+            className="shrink-0 bg-white z-40 flex flex-col shadow-xl"
+          >
+            <ChatInterface 
+              messages={messages} 
+              isTyping={isTyping} 
+              onSendMessage={handleSendMessage}
+              onSuggestionClick={(txt) => handleSendMessage(txt, [])}
+              onClearChat={handleClearChat}
+              onTranscribeAudio={handleTranscribeAudio}
+            />
+          </aside>
+      </div>
 
     </div>
   );
