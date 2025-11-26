@@ -73,26 +73,6 @@ export interface GeminiResponse {
   }[];
 }
 
-export const transcribeAudio = async (base64Audio: string, mimeType: string = 'audio/webm'): Promise<string> => {
-  if (!ai) return "Error: API Key missing.";
-
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: {
-        parts: [
-          { inlineData: { mimeType, data: base64Audio } },
-          { text: "Transcribe this audio exactly. Do not add any commentary, just the text." }
-        ]
-      }
-    });
-    return response.text || "";
-  } catch (error) {
-    console.error("Transcription Error:", error);
-    return "";
-  }
-};
-
 export const generateRiskResponse = async (
   history: { role: string; parts: { text?: string; inlineData?: any }[] }[],
   currentMessage: string,

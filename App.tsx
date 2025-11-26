@@ -5,7 +5,7 @@ import BowTieGraph from './components/BowTieGraph';
 import ChatInterface from './components/ChatInterface';
 import { INITIAL_REACTFLOW_NODES, INITIAL_REACTFLOW_EDGES, X_POS } from './constants';
 import { ChatMessage, ContentType, MessageRole, SimulationResult, NodeType, Attachment } from './types';
-import { generateRiskResponse, transcribeAudio } from './services/geminiService';
+import { generateRiskResponse } from './services/geminiService';
 import { 
   Node, 
   Edge, 
@@ -223,22 +223,6 @@ const App: React.FC = () => {
         timestamp: Date.now()
       }
     ]);
-  };
-
-  const handleTranscribeAudio = async (blob: Blob): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64data = (reader.result as string).split(',')[1];
-        try {
-          const text = await transcribeAudio(base64data, blob.type);
-          resolve(text);
-        } catch (e) {
-          reject(e);
-        }
-      };
-      reader.readAsDataURL(blob);
-    });
   };
 
   const handleSendMessage = async (text: string, attachments: Attachment[] = []) => {
@@ -517,7 +501,6 @@ const App: React.FC = () => {
               onSendMessage={handleSendMessage}
               onSuggestionClick={(txt) => handleSendMessage(txt, [])}
               onClearChat={handleClearChat}
-              onTranscribeAudio={handleTranscribeAudio}
             />
           </aside>
       </div>
